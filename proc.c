@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#define K 10000
 
 struct {
   struct spinlock lock;
@@ -178,7 +179,7 @@ growproc(int n)
 // Sets up stack to return as if from system call.
 // Caller must set state of returned proc to RUNNABLE.
 int
-fork(void)
+fork(int tickets)
 {
   int i, pid;
   struct proc *np;
@@ -189,6 +190,7 @@ fork(void)
     return -1;
   }
 
+  if (!tickets) tickets = 100;
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
@@ -199,6 +201,7 @@ fork(void)
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
+  
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -215,7 +218,10 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-
+  np->pos = (int)K/tickets;
+  np->stride = (int)K/tickets;
+  np->tickets = tickets;
+  np->execs = 0;
   release(&ptable.lock);
 
   return pid;
@@ -319,41 +325,78 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+
+
 void
 scheduler(void)
 {
-  struct proc *p;
+  struct proc *p, *min;
   struct cpu *c = mycpu();
   c->proc = 0;
+  //int count = 0;
   
   for(;;){
     // Enable interrupts on this processor.
     sti();
-
+    
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+//next:
+    // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    //   if(p->state != RUNNABLE)
+    //     continue;
+
+    for(min = ptable.proc; min < &ptable.proc[NPROC]; min++)
+     if(min->state == RUNNABLE)
+       break;
+
+    if(min >= &ptable.proc[NPROC]){
+      goto next;
+    }
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+      if(p->state == RUNNABLE && p->pos < min->pos)
+        min = p;
+     // if(p->state != RUNNABLE || p->pos > min->pos)
+       // continue;
+
+    // if(min == ptable.proc + NPROC)
+    //   continue;
 
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-
-      swtch(&(c->scheduler), p->context);
+      c->proc = min;
+      switchuvm(min);
+      min->state = RUNNING;
+      min->pos += min->stride;
+      min->execs++;
+      //if (min->pos+min->stride >= K) min->pos = 0;
+      swtch(&(c->scheduler), min->context);
       switchkvm();
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
-    release(&ptable.lock);
 
+      // if(min->tickets!=100) count++;
+      // if (count%500 == 0) check();
+
+      // if (min->state == ZOMBIE && min->tickets!=100) 
+      //   cprintf("Process with %d tickets executed\n",min->tickets);
+      c->proc = 0;
+      //
+next:
+    release(&ptable.lock);
   }
 }
+
+
+void check(void){
+  struct proc *p;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+      if(p->state == RUNNABLE && p->tickets != 100)
+        cprintf("(tickets, stride, executed) (%d, %d, %d)\n", p->tickets, p->stride, p->execs);
+}
+
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores

@@ -10,7 +10,9 @@
 int
 sys_fork(void)
 {
-  return fork();
+  int tickets;
+  argint(0, &tickets); // aqui 0 referencia o primeiro argumento passado na chamada
+  return fork(tickets); 
 }
 
 int
@@ -35,6 +37,8 @@ sys_kill(void)
     return -1;
   return kill(pid);
 }
+
+
 
 int
 sys_getpid(void)
