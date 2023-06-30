@@ -181,7 +181,6 @@ UPROGS=\
 	_stressfs\
 	_wc\
 	_zombie\
-	_check\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -249,7 +248,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 # check in that version.
 
 EXTRA=\
-	mkfs.c ulib.c user.h check.c test.c cat.c echo.c forktest.c grep.c kill.c\
+	mkfs.c ulib.c user.h test.c cat.c echo.c forktest.c grep.c kill.c\
 	ln.c ls.c mkdir.c rm.c stressfs.c wc.c zombie.c\
 	printf.c umalloc.c\
 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
